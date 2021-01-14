@@ -28,14 +28,14 @@ while true
     mrpi_tmp = mrpi.intersect(mrpi_next);
     mrpi_tmp.minHRep();
     if mrpi_tmp.contains(mrpi) && mrpi.contains(mrpi_tmp)
-        disp('Found mRPI')
+        disp('Found RPI')
         break
     else
         mrpi = mrpi_tmp;
     end
     
     if nu > 20
-        disp('Reached maximum number of iterations. Did not find mRPI')
+        disp('Reached maximum number of iterations. Did not find RPI')
         break
     end
 end

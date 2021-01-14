@@ -1,16 +1,8 @@
 function [F_alpha_s, alpha, s] = rpi(A, W, eps, s_max)
 % Compute the robust positively invariant set from Rakovic et al. (2005).
 
-% Set the precision
-% eps = 1e-3;
-
 s = 0;
-% s_max = 10;
-
 state_dim = size(A, 2);
-
-% Create standard basis vectors
-e = eye(state_dim);
 
 % Collect all the powers of A
 A_pow_all = {};
@@ -50,11 +42,9 @@ while 1
     M = max([positive_support; negative_support]);
 
     % Precision criterion from eq. (14) from Rakovic et al. (2005)
-    if s >= 2  % make sure it runs for at least two iterations 
-        if alpha <= eps / (eps + M) 
-            disp('RPI set computed')
-            break
-        end
+    if alpha <= eps / (eps + M) 
+        disp('RPI set computed')
+        break
     end
     
     % Maximum number of iterations criterion
@@ -69,23 +59,16 @@ alpha
 s
 
 % Compute F_s and scale it to give F(alpha, s)
-W.minHRep();
-F_s = A_pow_all{1} * W;
-F_s.minHRep();
+% Initialiize F_s = {0}, at s = 0
+F_s = Polyhedron(zeros(2, state_dim));
 % Compute the Minkowski sum for F_s from eq. (2) from Rakovic et al. (2005).
-for i = 2 : s
+for i = 1 : s
     F_s = F_s + A_pow_all{i} * W;
     F_s.minHRep();
 end
 
 % Scale the set F_s with the factor from eq. (5) from Rakovic et al. (2005)
-F_alpha_s = 1 / (1 - alpha) * F_s;
-
-%Plot F(alpha, s)
-% plot(F_alpha_s)
-% xlabel("x_1")
-% ylabel("x_2")
-% title(["F(\alpha, s) \subseteq F_{\infty}",
-%        join(["\alpha=", num2str(alpha), "; s=", num2str(s)])])
+F_alpha_s = (1 / (1 - alpha)) * F_s;
+F_alpha_s.minHRep();
 end
 

@@ -8,17 +8,15 @@
 
 %% Settings
 % Make results in experiment repeatable:
-experiment_1 = true; % select either true or false
+experiment_1 = false; % select either true or false
 
 if experiment_1
-    % leaves tube around the origin -- > does not converge % to (I I)*Z
     % Define intial condition
     x0 = [-8.7; -1.5]; 
     rng(0,'philox');
 else
-    % Leaves tube at the second time step
     % Define intial condition
-    x0 = [-8.7; -4.0];
+    x0 = [-8.7; -3.5];
     rng(0,'twister');
 end
 
@@ -45,8 +43,8 @@ if strcmp('gurobi', solver)
 end
 
 % Stopping criteria for determining mRPI sets
-eps_rpi = 0.01;
-k_max = 20;
+eps_rpi = 1e-5;
+k_max = 50;
 
 % Toggle maximum disturbances
 maximum_disturbance = true;
@@ -103,9 +101,7 @@ K_f = - K_f;
 K = - [1, 1];
 L = - [1; 1];
 
-%% Calculate the robustly positive/disturbant invariant set Z
-% According to Rakovic et al. (2005), Algorithm 1
-
+%% Closed-Loop system matrices
 % Define error system matrix
 A_k = A + B * K;
 % Define observer system matrix
@@ -119,8 +115,24 @@ G = [eye(state_dim), L;
 D_V = [W.V, V.V(1) * ones(length(W.V), 1);
        W.V, V.V(2) * ones(length(W.V), 1)];
 D = Polyhedron(D_V);
-Z = rpi(F, G * D, eps_rpi, k_max);
-Z.minHRep();
+D.minHRep();
+GD = G * D;
+GD.minHRep();
+
+% Calculate mRPI set
+if isnilpotent(F)
+    disp('Calculating mRPI for nilpotent system matrix.')
+    Z = rpi_nilpotent(F, GD);
+else
+    % According to Rakovic et al. (2005), Algorithm 1
+    disp('Calculating mRPI using approximation in Rakovic et al. (2005).')
+    Z = rpi(F, GD, eps_rpi, k_max);
+end
+
+% Assert that RPI set has been computed
+Z_next = F * Z + GD;
+Z_next.minHRep();
+assert(Z.contains(Z_next) && Z_next.contains(Z))
 
 % Tighten state and input constraints by Z
 X_bar = X - [eye(state_dim), eye(state_dim)] * Z;
@@ -128,7 +140,7 @@ X_bar.minHRep();
 U_bar = U - [zeros(1, state_dim), K] * Z;
 U_bar.minHRep();
 
-%% Determine terminal set as maximal roubst positive invariant (mRPI) set 
+%% Determine terminal set as maximal roubst positive invariant set 
 % According to Kouvaritakis and Cannon (2016), section 2.4 Theorem 2.3
 X_f = terminal_constraint(X_bar, U_bar, A, B, K_f);
 
@@ -195,6 +207,7 @@ for i = 1 : num_steps
 end
 
 %% Plot Results
+% Plot state space trajectories
 figure
 % Plot state constraints
 plot(X, 'color','white')
@@ -206,7 +219,12 @@ plot(X_f, 'color', 'gray')
 % Plot tube over the nominal trajectory, the estimated trajectory and true
 % trajectory
 for i = 1 : num_steps
-    plot([X_traj(1, i, 1); X_traj(2, i, 1)] + [eye(state_dim), eye(state_dim)] * Z, 'color', 'g')
+    Z_i = [X_traj(1, i, 1); X_traj(2, i, 1)] + [eye(state_dim), eye(state_dim)] * Z;
+    plot(Z_i, 'color', 'g')
+    if ~Z_i.contains([X_traj_actual(1, i); X_traj_actual(2, i)])
+        i
+        disp('True state is not contained inside the tube.')
+    end
 end
 
 % Plot nominal closed-loop trajectory
@@ -225,9 +243,34 @@ xlabel("$x_1$", 'Interpreter','latex')
 ylabel("$x_2$", 'Interpreter','latex')
 title("Robust Output Feedback MPC")
 
+% Set legend
+f=get(gca,'Children');
+lgd = legend([f(1), f(2), f(3), f(3 + num_steps), ...
+              f(4 + num_steps), f(5 + num_steps), f(6 + num_steps)], ...
+             '$\hat{x}$','$x$','$\bar{x}$',...
+             '$\bar{x} \oplus (\vec{I} ~ \vec{I}) \mathcal{Z}$',...
+             '$\mathcal{X}_f$',...
+             '$\mathcal{X}_f \oplus (\vec{I} ~ \vec{I}) \mathcal{Z}$',...
+             '$\mathcal{X}$',...
+             'Interpreter', 'latex', 'Location', 'southwest');
+lgd.FontSize = 16;
+
+% Plot trajectories over time
 figure
 hold on
 plot(1: num_steps, 3 * ones(num_steps, 1), 'k-')
 plot(1 : num_steps, X_traj_actual(1, :), 'r-')
 plot(1 : num_steps, X_traj_actual(2, :), 'b-')
 hold off
+
+% Set labels and title
+xlabel("$t$", 'Interpreter','latex')
+ylabel("$x_1,~ x_2$", 'Interpreter','latex')
+title("Robust Output Feedback MPC")
+
+% Set legend
+f=get(gca,'Children');
+lgd = legend([f(1), f(2), f(3)], ...
+             '$x_1$','$x_2$','$\mathcal{X}$',...
+             'Interpreter', 'latex', 'Location', 'southeast');
+lgd.FontSize = 16;
